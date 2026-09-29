@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*~
+
+# 環境変数・秘密情報(誤ってコミットしないように)
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+
+# 配布用のパッケージ・ZIP
+*.zip
+*.crx
+*.pem
+
+# Node(開発で使う場合)
+node_modules/
+npm-debug.log*
+
+# ログ・一時ファイル
+*.log
+*.tmp
+
+# 個人のテスト用ファイル(スクリーンショット・ポータルから保存した HTML など)
+scratch/
+screenshots/
+saved-pages/

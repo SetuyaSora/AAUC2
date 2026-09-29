@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><title>AAUC2 demo</title></head>
+<body>
+<h1>AAUC2 デモ(モックデータ)</h1>
+<p>ポータルに接続せず、AAUC2のUIだけを確認するページです。授業は実際の時限(1限 09:10 / 2限 11:00 / 3限 13:40 / 4限 15:30)で作っています。
+デモの時計は <b id="clockNote"></b> から進みます(<code>demo.html?time=13:42</code> のように時刻を指定できます。3限の開始は 13:40、出席○は3分まで、△は15分までです)。
+出席パスワード「1234」で「登録完了」、「0000」でモーダルが閉じるだけ、それ以外はエラーを試せます。</p>
+<span id="lblGakki">後期</span>
+<span id="tabCalender_tabPanelWeek_lblWeek">2026/09/27(日)～2026/10/03(土)</span>
+<a id="lbtnOshirase">お知らせ一覧へ</a>
+<table><tr><td><a id="lbtnCsb">授業一覧へ</a></td></tr></table>
+<script>
+// デモの時計: 指定した時刻(既定 13:38)から進める。日付は本物の今日。
+(() => {
+  const R = Date;
+  const q = new URLSearchParams(location.search).get('time') || '13:38';
+  const [hh, mm] = q.split(':').map(Number);
+  const t = new R(); t.setHours(hh || 0, mm || 0, 0, 0);
+  const off = t.getTime() - R.now();
+  window.Date = class extends R {
+    constructor(...a) { if (a.length) super(...a); else super(R.now() + off); }
+    static now() { return R.now() + off; }
+  };
+  document.getElementById('clockNote').textContent = q;
+})();
+</script>
+<script>
+const d = new Date(); const p = n => String(n).padStart(2, '0');
+const labels = ['日','月','火','水','木','金','土'];
+const base = new Date(d); base.setDate(d.getDate() - d.getDay());
+const heads = labels.map((l, i) => { const x = new Date(base); x.setDate(base.getDate() + i); return `${p(x.getMonth()+1)}/${p(x.getDate())}(${l})`; });
+const f = m => `${p(Math.floor(m/60))}:${p(m%60)}`;
+const T = (h, m) => h * 60 + m;
+const lesson = (s, e, n, t, i) => `<div class="wscheduleWaku schedule-color2"><div class="wschedule">${f(s)}～${f(e)}</div><div class="wschedule">大学</div><div class="wscheduleJugyou">${n}</div><div class="wschedule">${t}</div><div class="wschedule"></div><div id="div_week_${i}" style="display:none"><span class="long_text">大学</span><span class="long_text">${n}</span><span class="long_text">${t}</span><a href="#">スレッド一覧</a><a href="#" onclick="return false">出席</a></div></div>`;
+const ev = t => `<div class="wscheduleWaku schedule-color1" title="${t}"><div class="wscheduleJugyou">${t}</div><div class="wschedule"></div></div>`;
+const cells = [0,1,2,3,4,5,6].map(i => {
+  // 今日: 2限(終了)・3限・4限
+  if (i === d.getDay()) return `<td>${lesson(T(11,0), T(12,40), 'アビドスの歴史と文化', '小鳥遊 ホシノ', 1)}${lesson(T(13,40), T(15,20), 'キヴォトス概論A', '空崎 ヒナ', 2)}${lesson(T(15,30), T(17,10), 'ミレニアム情報科学演習', '早瀬 ユウカ', 3)}</td>`;
+  // 2日後: 1限・3限
+  if (i === (d.getDay() + 2) % 7) return `<td>${ev('(開始)後期授業期間')}${lesson(T(9,10), T(10,50), 'アビドスの歴史と文化', '小鳥遊 ホシノ', 4)}${lesson(T(13,40), T(15,20), 'キヴォトス概論A', '空崎 ヒナ', 5)}${lesson(T(17,20), T(19,0), 'ミレニアム情報科学演習', '早瀬 ユウカ', 6)}</td>`;
+  return '<td></td>';
+});
+document.body.insertAdjacentHTML('beforeend', `<table id="tabCalender_tabPanelWeek_tblWeek"><tr>${heads.map(h => `<td><a class="week_day" href="#">${h}</a></td>`).join('')}</tr><tr>${cells.join('')}</tr><tr><td colspan="7">集中他</td></tr><tr><td colspan="7"><div><div class="mscheduleetc">大学 シャーレ実務実習Ⅰ 先生</div></div></td></tr></table>`);
+</script>
+<div id="pnlPassword" style="display:none;position:fixed;top:60px;left:60px;background:#fff;border:1px solid #000;padding:8px;z-index:100001">
+  <span id="lblTitle">出席パスワードを入力して下さい</span><br>
+  <input type="password" id="txtPassword"><br><span id="lblMessage" style="color:red"></span><br>
+  <input type="image" id="ibtnOK" alt="ok" onclick="return mockSubmit()" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" width="60" height="20">
+</div>
+<div id="log" style="position:fixed;left:0;bottom:0;background:#ffd;font:12px monospace"></div>
+<script>
+// 出席リンクをクリックすると300ms後にモーダル表示(本物の非同期ポストバックを模擬)
+document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('a'); if (a && a.textContent === '出席') { setTimeout(() => { document.getElementById('pnlPassword').style.display = 'block'; }, 300); } }, true);
+function mockSubmit() {
+  const v = document.getElementById('txtPassword').value;
+  document.getElementById('lblMessage').textContent = '';
+  document.getElementById('log').textContent = 'submitted:' + v;
+  setTimeout(() => {
+    if (v === '1234') { window.__demoReflected = true; document.getElementById('lblTitle').textContent = '出席の登録が完了しました。「登録完了」画面を確認してください。'; }
+    else if (v === '0000') { window.__demoReflected = true; document.getElementById('pnlPassword').style.display = 'none'; }
+    else document.getElementById('lblMessage').textContent = 'パスワードが違います';
+  }, 400);
+  return false;
+}
+</script>
+<script>
+// デモ用: 出欠調査状況表(rz0030.aspx)を模したHTMLを返す。1234/0000 で今日の3限が「反映」される。
+window.__demoReflected = false;
+window.__AAUC2_DEMO__ = { attendanceHtml() {
+  if (window.__demoSessionAlive === false) throw new Error('session expired'); // 切れていると、実際のポータルでも取得に失敗する
+  const pad = n => String(n).padStart(2, '0'); const d = new Date(); const md = x => `${pad(x.getMonth()+1)}/${pad(x.getDate())}`;
+  const back = n => { const x = new Date(d); x.setDate(d.getDate() - n); return md(x); };
+  const row = (code, name, teacher, cells, sur, pre, abs, rate, i) => `<tr class="serach_list"><td><span>${code}</span></td><td>大学</td><td><span>${name}</span></td><td><span>${teacher}</span></td>
+    <td><span id="x_ctl0${i}_lblCousakiKaisu">${sur}</span> / <span id="x_ctl0${i}_lblSyussekiKaisu">${pre}</span> / <span id="x_ctl0${i}_lblKessekiKaisu">${abs}</span></td>
+    <td><span id="x_ctl0${i}_lblKessekiRitu">${rate}</span></td>${Array.from({length:15},(_,k)=>`<td><span>${cells[k]||''}</span></td>`).join('')}</tr>`;
+  const todayMark = window.__demoReflected ? [`${md(d)}○`] : [];
+  return `<span id="ctl00_cphMain_lbl2">後期</span><table id="ctl00_cphMain_gdvSyukketuJoukyou"><tr class="serach_list_head"><th>授業コード</th></tr>
+  ${row('DEMO0001','アビドスの歴史と文化','小鳥遊 ホシノ',[`${back(14)}○`,`${back(7)}△`,`${md(d)}○`],3,2,0,'0%',2)}
+  ${row('DEMO0002','キヴォトス概論A','空崎 ヒナ',[`${back(14)}○`,`${back(7)}○`,...todayMark],2+todayMark.length,2+todayMark.length,0,'0%',3)}
+  ${row('DEMO0003','ミレニアム情報科学演習','早瀬 ユウカ',[`${back(35)}／`,`${back(28)}／`,`${back(21)}／`,`${back(14)}／`,`${back(7)}○`],5,1,4,'80%',4)}
+  ${row('DEMO0004','トリニティ古典文学講読(全18回・17回調査済み)','桐藤 ナギサ',Array.from({length:15},(_,k)=>`${back(105-7*k)}${k===6?'／':'○'}`),17,16,1,'5.9%',5)}</table>`;
+}
+  , sessionAlive: async () => { window.__sessionChecks = (window.__sessionChecks || 0) + 1; return window.__demoSessionAlive !== false; } };
+</script>
+<script src="./content.js"></script>
+</body></html>

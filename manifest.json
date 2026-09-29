@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "AAUC2",
+  "version": "2.2.0",
+  "description": "Active Academy Advance のトップページを、見やすい時間割ダッシュボードに置き換えます。",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["https://*.ac.jp/aa_web/portal/*"],
+      "js": ["early.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.ac.jp/aa_web/portal/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
