@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AAUC2",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Active Academy Advance のトップページを、見やすい時間割ダッシュボードに置き換えます。",
   "permissions": ["storage"],
   "content_scripts": [

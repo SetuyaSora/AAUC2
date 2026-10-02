@@ -16,6 +16,9 @@
   const q = new URLSearchParams(location.search).get('time') || '13:38';
   const [hh, mm] = q.split(':').map(Number);
   const t = new R(); t.setHours(hh || 0, mm || 0, 0, 0);
+  // demo.html?date=2026-10-20 のように日付も指定できる(月表示で、過去の日の出欠記号を確認するため)
+  const dq = new URLSearchParams(location.search).get('date');
+  if (dq) { const [yy, mm2, dd2] = dq.split('-').map(Number); if (yy && mm2 && dd2) t.setFullYear(yy, mm2 - 1, dd2); }
   const off = t.getTime() - R.now();
   window.Date = class extends R {
     constructor(...a) { if (a.length) super(...a); else super(R.now() + off); }
@@ -41,6 +44,34 @@ const cells = [0,1,2,3,4,5,6].map(i => {
   return '<td></td>';
 });
 document.body.insertAdjacentHTML('beforeend', `<table id="tabCalender_tabPanelWeek_tblWeek"><tr>${heads.map(h => `<td><a class="week_day" href="#">${h}</a></td>`).join('')}</tr><tr>${cells.join('')}</tr><tr><td colspan="7">集中他</td></tr><tr><td colspan="7"><div><div class="mscheduleetc">大学 シャーレ実務実習Ⅰ 先生</div></div></td></tr></table>`);
+</script>
+<script>
+// 月のタブ(#tabCalender_tabPanelMonth)を模す: 今月の授業・予定を日ごとに並べる(本物と同じ構造)
+(() => {
+  const y = d.getFullYear(), mo = d.getMonth();
+  const lastDate = new Date(y, mo + 1, 0).getDate();
+  const patternToday = [[T(11,0),T(12,40),'アビドスの歴史と文化','小鳥遊 ホシノ'],[T(13,40),T(15,20),'キヴォトス概論A','空崎 ヒナ'],[T(15,30),T(17,10),'ミレニアム情報科学演習','早瀬 ユウカ']];
+  const patternPlus2 = [[T(9,10),T(10,50),'アビドスの歴史と文化','小鳥遊 ホシノ'],[T(13,40),T(15,20),'キヴォトス概論A','空崎 ヒナ'],[T(17,20),T(19,0),'ミレニアム情報科学演習','早瀬 ユウカ']];
+  let seq = 1;
+  window.__demoPast = {}; // 今月の過去の授業日(出欠表のモックに記録として入れる)
+  const markPast = (n, day) => { if (day < d.getDate()) (window.__demoPast[n] = window.__demoPast[n] || []).push(`${p(mo + 1)}/${p(day)}`); };
+  const mlesson = (s, e, n, t) => `<div><div class="schedule-color2 mschedule">${f(s)} ${n.slice(0,6)}</div><div id="tabCalender_tabPanelMonth_div_month_${String(seq++).padStart(6,'0')}" style="display:none"><span class="long_text">${f(s)}～${f(e)}</span><span class="long_text">大学</span><span class="long_text">${n}</span><span class="long_text">${t}</span><a onclick="return false">スレッド一覧</a></div></div>`;
+  const mev = t => `<div><div class="schedule-color1 mschedule" title="${t}">${t.slice(0,10)}</div></div>`;
+  const rows = []; let row = [];
+  const firstDow = new Date(y, mo, 1).getDay();
+  for (let i = 0; i < firstDow; i++) row.push('<td></td>');
+  for (let day = 1; day <= lastDate; day++) {
+    const dow = new Date(y, mo, day).getDay();
+    let inner = '';
+    if (day === 1) inner += mev('(開始)後期授業期間');
+    if (day === 14) inner += mev('文化の日(授業実施)');
+    if (dow === d.getDay()) { inner += patternToday.map(x => mlesson(...x)).join(''); patternToday.forEach(x => markPast(x[2], day)); }
+    else if (dow === (d.getDay() + 2) % 7) { inner += patternPlus2.map(x => mlesson(...x)).join(''); patternPlus2.forEach(x => markPast(x[2], day)); }
+    row.push(`<td valign="top"><a class="month_day" id="x_lnkDay${day}">${day}</a>${inner}</td>`);
+    if (dow === 6 || day === lastDate) { while (row.length < 7) row.push('<td></td>'); rows.push(`<tr>${row.join('')}</tr>`); row = []; }
+  }
+  document.body.insertAdjacentHTML('beforeend', `<div id="tabCalender_tabPanelMonth"><span id="tabCalender_tabPanelMonth_lblMonth">${y}/${mo + 1}</span><button type="button" id="tabCalender_tabPanelMonth_imgLastMonth">先月へ</button><button type="button" id="tabCalender_tabPanelMonth_imgNextMonth">翌月へ</button><table id="tabCalender_tabPanelMonth_tblMonth"><tr>${['日','月','火','水','木','金','土'].map(x => `<td>${x}</td>`).join('')}</tr>${rows.join('')}</table></div>`);
+})();
 </script>
 <div id="pnlPassword" style="display:none;position:fixed;top:60px;left:60px;background:#fff;border:1px solid #000;padding:8px;z-index:100001">
   <span id="lblTitle">出席パスワードを入力して下さい</span><br>
@@ -74,9 +105,11 @@ window.__AAUC2_DEMO__ = { attendanceHtml() {
     <td><span id="x_ctl0${i}_lblCousakiKaisu">${sur}</span> / <span id="x_ctl0${i}_lblSyussekiKaisu">${pre}</span> / <span id="x_ctl0${i}_lblKessekiKaisu">${abs}</span></td>
     <td><span id="x_ctl0${i}_lblKessekiRitu">${rate}</span></td>${Array.from({length:15},(_,k)=>`<td><span>${cells[k]||''}</span></td>`).join('')}</tr>`;
   const todayMark = window.__demoReflected ? [`${md(d)}○`] : [];
+  // 今月の過去の授業日の記録(3回に1回は欠席)
+  const past = n => (window.__demoPast && window.__demoPast[n] || []).map((m, i) => `${m}${i % 3 === 1 ? '／' : '○'}`);
   return `<span id="ctl00_cphMain_lbl2">後期</span><table id="ctl00_cphMain_gdvSyukketuJoukyou"><tr class="serach_list_head"><th>授業コード</th></tr>
-  ${row('DEMO0001','アビドスの歴史と文化','小鳥遊 ホシノ',[`${back(14)}○`,`${back(7)}△`,`${md(d)}○`],3,2,0,'0%',2)}
-  ${row('DEMO0002','キヴォトス概論A','空崎 ヒナ',[`${back(14)}○`,`${back(7)}○`,...todayMark],2+todayMark.length,2+todayMark.length,0,'0%',3)}
+  ${row('DEMO0001','アビドスの歴史と文化','小鳥遊 ホシノ',[...past('アビドスの歴史と文化'),`${md(d)}○`],3,2,0,'0%',2)}
+  ${row('DEMO0002','キヴォトス概論A','空崎 ヒナ',[...past('キヴォトス概論A'),...todayMark],2+todayMark.length,2+todayMark.length,0,'0%',3)}
   ${row('DEMO0003','ミレニアム情報科学演習','早瀬 ユウカ',[`${back(35)}／`,`${back(28)}／`,`${back(21)}／`,`${back(14)}／`,`${back(7)}○`],5,1,4,'80%',4)}
   ${row('DEMO0004','トリニティ古典文学講読(全18回・17回調査済み)','桐藤 ナギサ',Array.from({length:15},(_,k)=>`${back(105-7*k)}${k===6?'／':'○'}`),17,16,1,'5.9%',5)}</table>`;
 }

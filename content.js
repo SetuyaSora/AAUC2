@@ -512,6 +512,50 @@
     };
   }
 
+  // ポータルの「月」タブ(#tabCalender_tabPanelMonth)には、1か月分の授業・祝日・予定がすべて入っている。
+  // セル内: 予定は div.mschedule[title]、授業は「div.mschedule(省略表示)+ 詳細の隠しdiv(div_month_...)」の組
+  function readMonth() {
+    const tbl = document.getElementById('tabCalender_tabPanelMonth_tblMonth');
+    const label = clean(document.getElementById('tabCalender_tabPanelMonth_lblMonth')?.textContent); // 例: 2026/10
+    const ym = label.match(/(\d{4})\/(\d{1,2})/);
+    if (!tbl || !ym) return null;
+    const year = +ym[1];
+    const month = +ym[2];
+
+    const weeks = [...tbl.rows].slice(1).map((tr) => [...tr.cells].map((td, dow) => {
+      const dayNum = parseInt(clean(td.querySelector('a.month_day, a[id*="lnkDay"]')?.textContent), 10);
+      if (!dayNum) return { day: 0, key: '', dow, lessons: [], events: [] };
+      const key = `${year}-${pad(month)}-${pad(dayNum)}`;
+      const lessons = [];
+      const events = [];
+      td.querySelectorAll('div.mschedule').forEach((el) => {
+        const popup = el.nextElementSibling && /_div_month_/.test(el.nextElementSibling.id) ? el.nextElementSibling : null;
+        if (!popup) {
+          const title = clean(el.title || el.textContent);
+          if (title) events.push(title);
+          return;
+        }
+        const spans = [...popup.querySelectorAll('span.long_text')].map((s) => clean(s.textContent)); // [時間, 区分, 授業名, 教員, ...]
+        const m = (spans[0] || '').match(/(\d{1,2}):(\d{2})\s*[～~〜-]\s*(\d{1,2}):(\d{2})/);
+        if (!m) return;
+        const start = +m[1] * 60 + +m[2];
+        const end = +m[3] * 60 + +m[4];
+        const name = spans[2] || clean(el.textContent);
+        const args = [...popup.querySelectorAll('a[onclick]')].map((a) => a.getAttribute('onclick')).join(' ');
+        lessons.push({
+          el: popup, // 授業の詳細(隠しdiv)。授業中にここへ「出席」リンクが出る場合は、これを使える
+          start, end, startLabel: fmtMin(start), endLabel: fmtMin(end),
+          kind: spans[1] || '', name, teacher: spans[3] || '',
+          code: (args.match(/'\d{4},\d+,([A-Za-z0-9]+),/) || [])[1] || '',
+          hue: hueOf(name), dateKey: key,
+        });
+      });
+      lessons.sort((a, b) => a.start - b.start);
+      return { day: dayNum, key, dow, lessons, events };
+    }));
+    return { label, year, month, weeks };
+  }
+
   // 「お知らせ」等のリンク横の件数(取得できたときだけ)
   function readCounts() {
     const defs = [
@@ -829,6 +873,61 @@
     .spin .ico { animation: spin .9s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* 月表示 */
+    .mwrap { overflow-x: auto; padding-bottom: 6px; }
+    .mgrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; min-width: 560px; }
+    .mdow { text-align: center; font-weight: 800; color: var(--muted); padding: 6px 0; }
+    .mdow.sun { color: var(--danger); }
+    .mdow.sat { color: var(--accent); }
+    .mcell { min-height: 108px; padding: 6px 7px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); cursor: pointer;
+      display: flex; flex-direction: column; gap: 3px; min-width: 0;
+      transition: transform .15s, box-shadow .15s, border-color .15s, background-color .3s;
+      animation: rise .45s cubic-bezier(.2,.7,.2,1) backwards; animation-delay: calc(var(--i, 0) * 16ms); }
+    .mcell.blank { background: transparent; border: 1px dashed var(--line); opacity: .35; cursor: default; }
+    .mcell:hover:not(.blank) { transform: translateY(-2px); box-shadow: var(--shadow-hover); border-color: var(--accent); }
+    .mcell:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .mcell.today { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 38%, transparent); }
+    .mcell.past:not(.today) { opacity: .75; }
+    .mday { display: flex; align-items: center; gap: 4px; font-weight: 800; font-size: 13px; }
+    .mday .ico { color: var(--accent); }
+    .mcell.today .mday { color: var(--accent); }
+    .mcell.sun .mday { color: var(--danger); }
+    .mcell.sat .mday { color: var(--accent); }
+    .mev { font-size: 10.5px; line-height: 1.3; font-weight: 700; color: var(--warn); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mchip { --c: hsl(var(--h) 74% var(--cl)); display: flex; align-items: center; gap: 4px; padding: 2px 6px; font-size: 11px; line-height: 1.3; border-radius: 7px;
+      background: color-mix(in srgb, var(--c) 18%, transparent); border-left: 3px solid var(--c); overflow: hidden; }
+    .mchip b { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .mchip .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mchip .mk { flex: none; font-weight: 800; }
+    .mk[data-k="present"] { color: var(--ok); }
+    .mk[data-k="absent"] { color: var(--danger); }
+    .mk[data-k="late"] { color: var(--warn); }
+    .mk[data-k="excused"] { color: var(--accent); }
+    .mk[data-k="none"] { color: var(--muted); }
+    .mmore { font-size: 10.5px; color: var(--muted); }
+    .mhead2 { display: flex; align-items: flex-start; gap: 12px; }
+    .dlist { margin-top: 10px; }
+    .drow { --c: hsl(var(--h) 74% var(--cl)); display: grid; grid-template-columns: 52px 1fr auto auto; gap: 4px 12px; align-items: center; padding: 10px 0 10px 12px; border-bottom: 1px solid var(--line); border-left: 4px solid var(--c); margin-left: 0; }
+    .drow:last-child { border-bottom: 0; }
+    .dtime { text-align: right; font-variant-numeric: tabular-nums; line-height: 1.25; }
+    .dtime b { display: block; }
+    .dtime span { font-size: 12px; color: var(--muted); }
+    .dmain { min-width: 0; }
+    .dname { display: block; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }
+    .dsub { font-size: 12.5px; color: var(--muted); }
+    .dnote { display: flex; gap: 5px; align-items: flex-start; margin-top: 4px; padding: 3px 9px; border-radius: 8px; background: color-mix(in srgb, var(--c) 13%, transparent); font-size: 12.5px; overflow-wrap: anywhere; }
+    .drow .memo-btn { margin-left: 0; }
+    .drow .attendwrap { margin-top: 6px; }
+    .drow .attend input { max-width: 190px; }
+    @media (max-width: 720px) {
+      .mgrid { gap: 3px; min-width: 0; }
+      .mcell { min-height: 70px; padding: 4px; border-radius: 10px; }
+      .mchip { padding: 1px 3px; border-left-width: 2px; }
+      .mchip .nm, .mmore, .mev { display: none; }
+      .drow { grid-template-columns: 44px 1fr; }
+      .drow .abadge, .drow .memo-btn { grid-column: 2; justify-self: start; }
+    }
+
     /* ログイン(セッション)の期限 */
     .pill.sess[data-level="warn"] { border-color: var(--warn); color: var(--warn); }
     .pill.sess[data-level="expired"] { border-color: var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
@@ -940,7 +1039,7 @@
 
     const state = {
       week: null,
-      view: ['today', 'week', 'att', 'notes'].includes(store.get('view', 'today')) ? store.get('view', 'today') : 'today',
+      view: ['today', 'week', 'month', 'att', 'notes'].includes(store.get('view', 'today')) ? store.get('view', 'today') : 'today',
       open: store.get('open', true),
       theme: THEME_ORDER.includes(store.get('theme', 'auto')) ? store.get('theme', 'auto') : 'auto',
       cards: [], // {lesson, card, chip, bar, paint, paintAtt}
@@ -1025,7 +1124,7 @@
       state.hero?.update();
       state.dialog?.repaintAtt?.();
       refreshAttButton();
-      if (state.view === 'att' && state.att.status !== 'loading') render();
+      if ((state.view === 'att' || state.view === 'month') && state.att.status !== 'loading') render();
     }
 
     // 同じ日に同じ授業が複数コマあるとき、何番目か
@@ -1284,7 +1383,7 @@
     });
 
     function refreshNotes() {
-      if (state.view === 'notes') { render(); return; }
+      if (state.view === 'notes' || state.view === 'month') { render(); return; }
       for (const c of state.cards) c.paint?.();
     }
 
@@ -1580,6 +1679,111 @@
       return box;
     }
 
+    // ---- 月表示 ----
+    // 授業1コマの出欠の記号(出欠表の日付と照合)。過去の授業で記録が無いときは「記録なし」
+    function monthMark(lesson, nth) {
+      const course = findCourse(state.att.data, lesson);
+      if (!course) return null;
+      const hits = course.sessions.filter((s) => s.md === lesson.dateKey.slice(5));
+      if (hits.length) return markInfo(hits[Math.min(nth, hits.length - 1)].mark);
+      if (course.partial) return null;
+      return lesson.dateKey < todayKey() ? { k: 'none', sym: '·', label: '記録なし' } : null;
+    }
+    const nthInDay = (cell, lesson) => Math.max(0, cell.lessons.filter((l) => l.name === lesson.name).indexOf(lesson));
+
+    // その日の詳細(授業・出欠・メモ)
+    function openDayDialog(cell) {
+      closeDialog();
+      const isToday = cell.key === todayKey();
+      // 今日の授業は、ここから出席登録もできる。出席リンクは、週のタブの同じ授業(確実に使える)を優先し、
+      // 週が今日を含まないときは、月のタブの詳細内にリンクがあればそれを使う
+      const attendTarget = (l) => {
+        if (!isToday) return null;
+        const w = state.week?.days.find((d) => d.key === cell.key)?.lessons.find((x) => x.start === l.start && x.name === l.name);
+        if (w) return w;
+        const hasLink = l.el && [...l.el.querySelectorAll('a')].some((a) => a.textContent.includes('出席'));
+        return hasLink ? l : null;
+      };
+      const rows = cell.lessons.map((l) => {
+        const m = monthMark(l, nthInDay(cell, l));
+        const preview = notesStore.preview(l.name, l.dateKey);
+        const target = attendTarget(l);
+        return h('div', { class: 'drow', style: `--h:${l.hue}` },
+          h('div', { class: 'dtime' }, h('b', {}, l.startLabel), h('span', {}, l.endLabel)),
+          h('div', { class: 'dmain' },
+            h('b', { class: 'dname' }, l.name),
+            h('span', { class: 'dsub' }, [l.teacher, l.kind].filter(Boolean).join(' · ')),
+            preview && h('div', { class: 'dnote' }, icon('note', 13), preview),
+            target ? attendForm(target) : null,
+          ),
+          m && h('span', { class: 'abadge', 'data-k': m.k }, m.k === 'none' ? m.label : `${m.sym} ${m.label}`),
+          h('button', {
+            class: 'memo-btn', type: 'button',
+            onclick: () => openDialog({ name: l.name, code: l.code, hue: l.hue, teacher: l.teacher, kind: l.kind, time: `${l.startLabel} – ${l.endLabel}`, dateKey: l.dateKey, lesson: null, canAttend: false }),
+          }, icon('note', 14), 'メモ'),
+        );
+      });
+      const backdrop = h('div', { class: 'backdrop' },
+        h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': `${dateLabelOf(cell.key)} の予定`, style: '--h:232' },
+          h('div', { class: 'mhead2' },
+            h('div', { class: 'mtitle' }, h('b', {}, dateLabelOf(cell.key)), cell.events.length ? h('small', {}, cell.events.join(' · ')) : null),
+            h('button', { class: 'pill icon-only', type: 'button', title: '閉じる (Esc)', onclick: closeDialog }, icon('x', 17)),
+          ),
+          rows.length ? h('div', { class: 'dlist' }, rows) : h('p', { class: 'muted', style: 'margin-top:14px' }, 'この日の授業はありません。'),
+          isToday && rows.length
+            ? h('div', { class: 'row2' }, h('button', { class: 'go', type: 'button', onclick: () => { closeDialog(); state.view = 'today'; store.set('view', 'today'); render(); } }, icon('check', 15), '「今日」タブを開く'))
+            : null,
+        ),
+      );
+      backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) closeDialog(); });
+      shadow.append(backdrop);
+      state.dialog = { el: backdrop, persist: () => {} };
+      applyTheme();
+    }
+
+    function renderMonth() {
+      const month = readMonth();
+      if (!month) return h('div', { class: 'empty' }, '月の予定を読み取れませんでした。ポータルのトップページを開き直してください。');
+      const box = h('div', { class: 'stack' });
+      const today = todayKey();
+
+      box.append(h('div', { class: 'weekbar' },
+        h('button', { class: 'pill', type: 'button', onclick: () => pageAction('tabCalender_tabPanelMonth_imgLastMonth') }, icon('left'), '先月'),
+        h('span', { class: 'range' }, `${month.year}年${month.month}月`),
+        h('button', { class: 'pill', type: 'button', onclick: () => pageAction('tabCalender_tabPanelMonth_imgNextMonth') }, '翌月', icon('right')),
+      ));
+      box.append(h('div', { class: 'hint' }, '日付をクリックすると、その日の授業・出欠・メモを開けます。  ○出席 ／欠席 △遅刻 ▽公欠 · 記録なし(過去の授業で出欠表に記録が無い)'));
+
+      const grid = h('div', { class: 'mgrid' }, DOW.map((d, i) => h('div', { class: `mdow${i === 0 ? ' sun' : i === 6 ? ' sat' : ''}` }, d)));
+      let idx = 0;
+      for (const week of month.weeks) {
+        for (const cell of week) {
+          if (!cell.day) { grid.append(h('div', { class: 'mcell blank' })); continue; }
+          const cls = ['mcell', cell.key === today && 'today', cell.key < today && 'past', cell.dow === 0 && 'sun', cell.dow === 6 && 'sat'].filter(Boolean).join(' ');
+          const shown = cell.lessons.slice(0, 4);
+          const hasNote = cell.lessons.some((l) => notesStore.preview(l.name, l.dateKey));
+          const open = () => openDayDialog(cell);
+          grid.append(h('div', {
+            class: cls, style: `--i:${Math.min(idx++, 30)}`, role: 'button', tabindex: '0',
+            'aria-label': `${dateLabelOf(cell.key)} 授業${cell.lessons.length}コマ`,
+            onclick: open,
+            onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } },
+          },
+          h('div', { class: 'mday' }, String(cell.day), hasNote ? icon('note', 12) : null),
+          cell.events.map((ev) => h('div', { class: 'mev', title: ev }, ev)),
+          shown.map((l) => {
+            const m = monthMark(l, nthInDay(cell, l));
+            return h('div', { class: 'mchip', style: `--h:${l.hue}`, title: `${l.startLabel}–${l.endLabel} ${l.name}` },
+              h('b', {}, l.startLabel), h('span', { class: 'nm' }, l.name), m ? h('span', { class: 'mk', 'data-k': m.k }, m.sym) : null);
+          }),
+          cell.lessons.length > shown.length ? h('div', { class: 'mmore' }, `ほか ${cell.lessons.length - shown.length} コマ`) : null,
+          ));
+        }
+      }
+      box.append(h('div', { class: 'mwrap' }, grid));
+      return box;
+    }
+
     // 全回数の入力欄(変更したら保存して、上限・警告を再計算する)
     function totalInput(course, r) {
       const input = h('input', { type: 'number', min: '1', max: '40', value: r.assumed ? '' : String(r.total), placeholder: '自動', 'aria-label': `${course.name} の全回数`, class: r.assumed ? 'assumed' : '' });
@@ -1766,7 +1970,7 @@
           h('span', { class: 'mark' }, 'A2'),
           h('div', { class: 'brand' }, h('b', {}, 'AAUC2'), h('small', {}, [week?.term, week?.range].filter(Boolean).join(' · '))),
         ),
-        h('nav', { class: 'tabs', role: 'tablist' }, tabBtn('today', '今日'), tabBtn('week', '週間'), tabBtn('att', '出欠'), tabBtn('notes', 'メモ')),
+        h('nav', { class: 'tabs', role: 'tablist' }, tabBtn('today', '今日'), tabBtn('week', '週間'), tabBtn('month', '月'), tabBtn('att', '出欠'), tabBtn('notes', 'メモ')),
         h('span', { class: 'spacer' }),
         h('div', { class: 'tools' },
           state.refreshBtn,
@@ -1784,6 +1988,8 @@
         wrap.append(h('div', { class: 'empty' }, '時間割を読み取れませんでした。ポータルのトップページを開き直してください。'));
       } else if (state.view === 'notes') {
         wrap.append(renderNotes());
+      } else if (state.view === 'month') {
+        wrap.append(renderMonth());
       } else if (state.view === 'att') {
         wrap.append(renderAttendance());
       } else {
