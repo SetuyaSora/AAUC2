@@ -1,6 +1,6 @@
 # AAUC2
 
-学務システム「Active Academy Advance(AAA)」のトップページ(My Schedule)を、見やすい時間割ダッシュボードに置き換える Chrome 拡張機能です。出席登録・出欠の確認・欠席の警告などを、ひとつの画面にまとめます。
+学務システム「Active Academy Advance(AAA)」のトップページ(My Schedule)を、見やすい時間割ダッシュボードに置き換える **Chrome / Firefox 拡張機能**(Manifest V3)です。出席登録・出欠の確認・欠席の警告などを、ひとつの画面にまとめます。
 
 > **非公式ツールです。** AAA の提供元・各大学とは無関係です。利用は自己責任でお願いします。出席登録は、各大学の規則と担当教員の指示に従ってください。本ツールは出席パスワードを自動生成・保存・推測しません(パスワードは毎回、利用者自身が入力します)。
 
@@ -21,9 +21,21 @@
 
 ## インストール
 
-1. Chrome で `chrome://extensions` を開き、右上の「デベロッパー モード」を ON
+### Chrome
+
+1. `chrome://extensions` を開き、右上の「デベロッパー モード」を ON
 2. 「パッケージ化されていない拡張機能を読み込む」でこのフォルダを選択
 3. AAA のトップページを開く
+
+(`manifest.json` の `browser_specific_settings` は Firefox 用のキーなので、Chrome では「認識されないキー」という警告が出ますが、動作に影響はありません。)
+
+### Firefox(140 以降 / Android は 142 以降)
+
+1. `about:debugging#/runtime/this-firefox` を開き、「一時的なアドオンを読み込む」で、このフォルダの `manifest.json` を選択
+2. アドオンの権限(`about:addons` → AAUC2 → 権限)で、対象のサイトへのアクセスを許可
+3. AAA のトップページを開く
+
+一時的な読み込みは、Firefox を閉じると消えます。常用するには、署名済みの配布版(Mozilla の AMO 経由)が必要です。
 
 `manifest.json` の `matches` は `https://*.ac.jp/aa_web/portal/*` と広めにしてあり、実際に動くのは、`content.js` と `early.js` の先頭にあるホストの判定(`aaaportal.*.ac.jp`)に合うサイトだけです。**自分の大学のポータルのホスト名が違う場合は、この判定(2か所とも同じ値)と、`manifest.json` の `matches` を書き換えてください**。時限の時刻(`content.js` の `PERIOD_OF`)、出席受付の秒数(`WIN_ON_TIME` / `WIN_LATE`)、欠席の規定(`attendanceRisk`)は、ある大学の学生便覧に基づく値です。ご自身の大学の規定に合わせて調整してください。
 
@@ -43,6 +55,13 @@
 - セッションが切れても、ページの再読み込みで(シングルサインオンのログイン状態から)自動で復帰できます。ログイン状態の確認は、トップページの再取得だけで行い、常時のキープアライブはしません。
 - 週の移動などでページ全体が再読み込みされる間は、元のポータル画面が一瞬見えることがあります(仕様上の制限です。`early.js` が背景色で覆って軽減しています)。
 - 出欠表は1ページに15回分のマスまでです。15回を超える授業は、集計値(調査/出席/欠席の回数)で判定し、マスが見えない旨を表示します。
+
+## 開発者向け
+
+- 検査: `npx web-ext lint --source-dir . --ignore-files demo.html README.md LICENSE .gitignore`(エラー・警告 0)
+- Firefox 向けの提出用パッケージ: `npx web-ext build --source-dir . --artifacts-dir ../dist --ignore-files demo.html README.md .gitignore`
+- ブラウザ API は、Firefox の `browser`(なければ Chrome の `chrome`)を使います。Firefox では、`storage.sync` を使うために、`manifest.json` の `browser_specific_settings.gecko.id` が必要です。
+- アイコンは、`innerHTML` を使わず、固定の SVG 文字列を `DOMParser` で解析して組み立てています(AMO の審査対策)。
 
 ## ライセンス
 

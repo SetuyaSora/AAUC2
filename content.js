@@ -62,10 +62,22 @@
     alarm: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M5 3L2 6M22 6l-3-3"/>',
     list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   };
+  // innerHTML は使わず、SVG を DOMParser で解析して組み立てる(固定の文字列だけを解析する)
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const iconNodeCache = {};
+  const iconNodes = (name) => {
+    if (!iconNodeCache[name]) {
+      const doc = new DOMParser().parseFromString(`<svg xmlns="${SVG_NS}">${ICONS[name] || ''}</svg>`, 'image/svg+xml');
+      iconNodeCache[name] = [...doc.documentElement.childNodes];
+    }
+    return iconNodeCache[name];
+  };
   const icon = (name, size = 16) => {
-    const span = h('span', { class: 'ico', 'aria-hidden': 'true' });
-    span.innerHTML = `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
-    return span;
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    const attrs = { viewBox: '0 0 24 24', width: size, height: size, fill: 'none', stroke: 'currentColor', 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+    for (const [k, v] of Object.entries(attrs)) svg.setAttribute(k, String(v));
+    for (const node of iconNodes(name)) svg.append(document.importNode(node, true));
+    return h('span', { class: 'ico', 'aria-hidden': 'true' }, svg);
   };
   const PORTAL_ICON = { lbtnOshirase: 'bell', lbtnRenraku: 'mail', lbtnCsb: 'book', lbtnKyuhokou: 'cal' };
 
@@ -276,10 +288,12 @@
 
   const findCourse = (data, { code, name }) => data?.courses.find((c) => (code && c.code === code) || c.name === name);
 
-  // ---------- メモの同期(Chrome の chrome.storage.sync) ----------
+  // ---------- メモの同期(Chrome / Firefox の storage.sync) ----------
   // 科目ごとに 1 アイテム('n:授業名')。新しい updatedAt が勝つ。削除は「deleted」の印を残して、オフラインだった端末で復活しないようにする。
   // Chrome にログインして同期をオンにしていれば別の PC とも共有される(そうでなければこの PC 内のみ)。
-  const hasSync = typeof chrome !== 'undefined' && !!chrome.storage?.sync;
+  // Firefox は promise 形式の `browser`、Chrome は `chrome` を使う(どちらでも動くように揃える)
+  const ext = globalThis.browser ?? globalThis.chrome;
+  const hasSync = !!ext?.storage?.sync;
   const notesSync = {
     enabled: hasSync,
     lastAt: 0,
@@ -291,7 +305,7 @@
       const payload = tombstone ? { course: '', sessions: {}, updatedAt: Date.now(), deleted: true } : notesStore.all()[name];
       if (!payload) return;
       try {
-        await chrome.storage.sync.set({ [`n:${name}`]: payload });
+        await ext.storage.sync.set({ [`n:${name}`]: payload });
         this.lastAt = Date.now();
       } catch (e) {
         this.onError?.(e);
@@ -302,7 +316,7 @@
     async pushTotals() {
       if (!hasSync) return;
       try {
-        await chrome.storage.sync.set({ totals: { map: store.get('totals', {}), at: store.get('totalsAt', Date.now()) } });
+        await ext.storage.sync.set({ totals: { map: store.get('totals', {}), at: store.get('totalsAt', Date.now()) } });
       } catch (e) {
         this.onError?.(e);
       }
@@ -312,7 +326,7 @@
     async pull() {
       if (!hasSync) return false;
       try {
-        const remote = await chrome.storage.sync.get(null);
+        const remote = await ext.storage.sync.get(null);
         const local = notesStore.all();
         let changed = false;
         const seen = new Set();
@@ -334,13 +348,13 @@
             if (val.deleted) { if (l) { delete local[name]; changed = true; } }
             else { local[name] = val; changed = true; }
           } else if (l && lt > rt) {
-            await chrome.storage.sync.set({ [key]: l });
+            await ext.storage.sync.set({ [key]: l });
           }
         }
         for (const [name, l] of Object.entries(local)) {
           if (seen.has(name)) continue;
           l.updatedAt = l.updatedAt || Date.now();
-          await chrome.storage.sync.set({ [`n:${name}`]: l });
+          await ext.storage.sync.set({ [`n:${name}`]: l });
           changed = true;
         }
         if (changed) store.set('notes', local);
@@ -355,7 +369,7 @@
     // 他の PC で変更されたら反映
     listen() {
       if (!hasSync) return;
-      chrome.storage.onChanged.addListener((changes, area) => {
+      ext.storage.onChanged.addListener((changes, area) => {
         if (area !== 'sync') return;
         const local = notesStore.all();
         let changed = false;
@@ -1329,7 +1343,7 @@
           attWrap,
           sessionTa && h('div', {}, h('h3', {}, `この回のメモ (${dateLabel})`), sessionTa),
           h('div', {}, h('h3', {}, '科目メモ(全回共通)'), courseTa),
-          h('div', { class: 'mfoot' }, saved, h('span', {}, notesSync.enabled ? '自動保存(Chrome の同期で他の PC とも共有)' : '自動保存(このブラウザ内)')),
+          h('div', { class: 'mfoot' }, saved, h('span', {}, notesSync.enabled ? '自動保存(ブラウザの同期で他の PC とも共有)' : '自動保存(このブラウザ内)')),
         ),
       );
       backdrop.addEventListener('mousedown', (e) => { if (e.target === backdrop) closeDialog(); });
@@ -1849,7 +1863,7 @@
       const box = h('div', { class: 'stack' });
       box.append(h('section', {}, h('h2', {}, 'メモ一覧')));
       box.append(h('div', { class: 'hint' }, notesSync.enabled
-        ? 'メモは Chrome の同期で保存されます(Chrome にログインして同期をオンにしていると、他の PC とも共有されます)。'
+        ? 'メモはブラウザの同期で保存されます(Chrome / Firefox のアカウントにログインして同期をオンにしていると、他の PC とも共有されます)。'
         : 'この環境では同期できないため、メモはこのブラウザ内にのみ保存されます。'));
       if (!names.length) {
         box.append(h('div', { class: 'empty' }, 'まだメモがありません。「今日」タブのカードの「メモ」ボタン、または「週間」タブの授業ブロックから追加できます。'));
